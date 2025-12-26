@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hedef 4 - Strateji Oyunu</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #e0f2fe; /* Light Blue BG */
+            touch-action: manipulation; /* Zoom engelleme */
+        }
+
+        /* Oyun Tahtası Stili */
+        .game-board {
+            background-color: #2563eb; /* Klasik Mavi Tahta */
+            border-radius: 15px;
+            padding: 10px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Tahtanın Ayakları */
+        .board-leg {
+            background-color: #1e40af;
+            width: 20px;
+            height: 40px;
+            position: absolute;
+            bottom: -35px;
+            z-index: 5;
+            border-radius: 0 0 10px 10px;
+        }
+        .leg-left { left: 20px; }
+        .leg-right { right: 20px; }
+
+        /* Hücreler */
+        .cell {
+            width: 100%;
+            padding-bottom: 100%; /* Kare oranı koruma */
+            background-color: #e0f2fe; /* Arka plan rengiyle aynı, delik hissi */
+            border-radius: 50%;
+            position: relative;
+            cursor: pointer;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+            transition: background-color 0.1s;
+        }
+
+        .cell:hover {
+            background-color: #dbeafe; /* Hover efekti */
+        }
+
+        /* Pullar */
+        .piece {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            transform: scale(0.9); /* Delikten biraz küçük */
+            z-index: 1;
+            box-shadow: inset -2px -2px 5px rgba(0,0,0,0.3), 2px 2px 5px rgba(255,255,255,0.3);
+            animation: dropBounce 0.5s ease-out;
+        }
+
+        .piece.red {
+            background: radial-gradient(circle at 30% 30%, #ff6b6b, #c0392b);
+        }
+
+        .piece.yellow {
+            background: radial-gradient(circle at 30% 30%, #feca57, #f39c12);
+        }
+
+        /* Kazanan Pullar için Efekt */
+        .winner-piece {
+            box-shadow: 0 0 15px 5px #fff;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes dropBounce {
+            0% { transform: translateY(-300%) scale(0.9); opacity: 0; }
+            60% { transform: translateY(0) scale(0.9); opacity: 1; }
+            75% { transform: translateY(-20px) scale(0.9); }
+            100% { transform: translateY(0) scale(0.9); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); }
+            50% { transform: scale(1.0); }
+            100% { transform: scale(0.9); }
+        }
+
+        /* UI Elementleri */
+        .btn-custom {
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .btn-custom:active {
+            transform: translateY(2px);
+            box-shadow: none;
+        }
+
+        /* Menü Overlay */
+        #menu-overlay {
+            backdrop-filter: blur(5px);
+        }
+
+        /* Sütun seçici (Hoverda üstte beliren hayalet pul) */
+        .column-hover-indicator {
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            opacity: 0;
+            pointer-events: none;
+            border-radius: 50px;
+        }
+        .col-wrapper:hover .column-hover-indicator {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col items-center justify-center overflow-hidden">
+
+    <!-- Ana Menü Ekranı -->
+    <div id="menu-screen" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-blue-900/90 text-white transition-opacity duration-300">
+        <h1 class="text-6xl font-bold mb-4 text-yellow-400 drop-shadow-md">HEDEF 4</h1>
+        <p class="text-xl mb-8 text-blue-100">4 tane pulu yan yana getir!</p>
+        
+        <div class="space-y-4 w-64">
+            <button onclick="startGame('cpu')" class="btn-custom w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3">
+                <i class="fa-solid fa-robot text-2xl"></i>
+                <span>Bilgisayara Karşı</span>
+            </button>
+            <button onclick="startGame('pvp')" class="btn-custom w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-3">
+                <i class="fa-solid fa-user-group text-2xl"></i>
+                <span>İki Kişilik</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Oyun Alanı -->
+    <div id="game-container" class="w-full max-w-lg px-4 flex flex-col h-full md:h-auto justify-center opacity-0 transition-opacity duration-500">
+        
+        <!-- Üst Bilgi Paneli -->
+        <div class="flex justify-between items-center mb-4 bg-white p-3 rounded-xl shadow-md">
+            <button onclick="returnToMenu()" class="text-gray-500 hover:text-gray-700">
+                <i class="fa-solid fa-house text-xl"></i>
+            </button>
+            
+            <div id="turn-indicator" class="flex items-center gap-2 px-4 py-2 rounded-full font-bold text-lg bg-red-100 text-red-600 transition-colors duration-300">
+                <div id="turn-dot" class="w-4 h-4 rounded-full bg-red-500"></div>
+                <span id="turn-text">Sıra Kırmızıda</span>
+            </div>
+
+            <button onclick="resetGame()" class="text-gray-500 hover:text-gray-700">
+                <i class="fa-solid fa-rotate-right text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Skor Kartı -->
+        <div class="flex justify-between gap-4 mb-4">
+            <div class="flex-1 bg-red-100 p-2 rounded-lg flex flex-col items-center border-b-4 border-red-500">
+                <span class="text-xs font-bold text-red-800">KIRMIZI</span>
+                <span id="score-red" class="text-2xl font-bold text-red-600">0</span>
+            </div>
+            <div class="flex-1 bg-yellow-100 p-2 rounded-lg flex flex-col items-center border-b-4 border-yellow-500">
+                <span class="text-xs font-bold text-yellow-800">SARI</span>
+                <span id="score-yellow" class="text-2xl font-bold text-yellow-600">0</span>
+            </div>
+        </div>
+
+        <!-- Oyun Tahtası -->
+        <div class="relative">
+            <div class="game-board grid grid-cols-7 gap-1 sm:gap-2">
+                <!-- Javascript ile hücreler buraya eklenecek -->
+            </div>
+            <!-- Ayaklar -->
+            <div class="board-leg leg-left"></div>
+            <div class="board-leg leg-right"></div>
+        </div>
+
+    </div>
+
+    <!-- Oyun Sonu Modalı -->
+    <div id="game-over-modal" class="hidden absolute inset-0 z-40 bg-black/50 flex items-center justify-center">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-sm mx-4 transform scale-100 transition-transform">
+            <div id="winner-icon" class="text-6xl mb-4">🏆</div>
+            <h2 id="winner-title" class="text-3xl font-bold mb-2 text-gray-800">Kırmızı Kazandı!</h2>
+            <p class="text-gray-600 mb-6">Tebrikler!</p>
+            <button onclick="resetGame()" class="btn-custom bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-full text-lg">
+                Tekrar Oyna
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Oyun Sabitleri
+        const ROWS = 6;
+        const COLS = 7;
+        const EMPTY = 0;
+        const RED = 1;
+        const YELLOW = 2;
+
+        // Oyun Durumu
+        let board = [];
+        let currentPlayer = RED; // 1: Kırmızı, 2: Sarı
+        let gameMode = 'pvp'; // 'pvp' veya 'cpu'
+        let isGameActive = false;
+        let scores = { [RED]: 0, [YELLOW]: 0 };
+        let isCpuThinking = false;
+
+        // DOM Elementleri
+        const boardElement = document.querySelector('.game-board');
+        const turnText = document.getElementById('turn-text');
+        const turnDot = document.getElementById('turn-dot');
+        const turnIndicator = document.getElementById('turn-indicator');
+        const menuScreen = document.getElementById('menu-screen');
+        const gameContainer = document.getElementById('game-container');
+        const gameOverModal = document.getElementById('game-over-modal');
+        const winnerTitle = document.getElementById('winner-title');
+        const scoreRedEl = document.getElementById('score-red');
+        const scoreYellowEl = document.getElementById('score-yellow');
+
+        // Başlangıç
+        function initBoard() {
+            boardElement.innerHTML = '';
+            board = [];
+            
+            // Sütun sarmalayıcıları oluştur (tıklama alanları için)
+            for (let c = 0; c < COLS; c++) {
+                const colWrapper = document.createElement('div');
+                colWrapper.className = 'col-wrapper grid grid-rows-6 gap-1 sm:gap-2 relative cursor-pointer';
+                colWrapper.dataset.col = c;
+                colWrapper.onclick = () => handleColumnClick(c);
+                
+                // Hover efekti
+                const hoverIndicator = document.createElement('div');
+                hoverIndicator.className = 'column-hover-indicator';
+                colWrapper.appendChild(hoverIndicator);
+
+                const colArray = [];
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    
+                    // İçine boş bir div koyalım, buraya pul gelecek
+                    const pieceContainer = document.createElement('div');
+                    pieceContainer.className = 'absolute inset-0 p-1 flex items-center justify-center pointer-events-none';
+                    cell.appendChild(pieceContainer);
+
+                    colWrapper.appendChild(cell);
+                    colArray.push(EMPTY);
+                }
+                
+                // Board array yapısı: board[col][row] (0 taban, 5 tavan)
+                // Görsel olarak 0 en üstte, ama mantıksal olarak 0'ı en alt kabul etmek daha kolay olabilir.
+                // Biz burada görsel sırayla (0: üst, 5: alt) tutalım.
+                board.push(colArray); 
+                boardElement.appendChild(colWrapper);
+            }
+        }
+
+        function startGame(mode) {
+            gameMode = mode;
+            menuScreen.style.opacity = '0';
+            setTimeout(() => {
+                menuScreen.classList.add('hidden');
+                gameContainer.classList.remove('opacity-0');
+            }, 300);
+            
+            resetGame(true);
+        }
+
+        function returnToMenu() {
+            gameContainer.classList.add('opacity-0');
+            setTimeout(() => {
+                menuScreen.classList.remove('hidden');
+                setTimeout(() => menuScreen.style.opacity = '1', 50);
+            }, 300);
+        }
+
+        function resetGame(fullReset = false) {
+            initBoard();
+            currentPlayer = RED;
+            isGameActive = true;
+            isCpuThinking = false;
+            gameOverModal.classList.add('hidden');
+            updateUI();
+
+            if(fullReset) {
+                scores = { [RED]: 0, [YELLOW]: 0 };
+                updateScores();
+            }
+        }
+
+        function handleColumnClick(colIndex) {
+            if (!isGameActive || isCpuThinking) return;
+            if (gameMode === 'cpu' && currentPlayer === YELLOW) return; // Sıra CPU'da ise tıklama
+
+            dropPiece(colIndex);
+        }
+
+        function dropPiece(colIndex) {
+            // Sütundaki en alt boş yeri bul
+            let rowIndex = -1;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (board[colIndex][r] === EMPTY) {
+                    rowIndex = r;
+                    break;
+                }
+            }
+
+            if (rowIndex === -1) return; // Sütun dolu
+
+            // Mantıksal güncelleme
+            board[colIndex][rowIndex] = currentPlayer;
+
+            // Görsel güncelleme
+            animateDrop(colIndex, rowIndex, currentPlayer);
+
+            // Kontrol: Kazanma veya Beraberlik
+            if (checkWin(colIndex, rowIndex, currentPlayer)) {
+                isGameActive = false;
+                scores[currentPlayer]++;
+                updateScores();
+                setTimeout(() => showWinModal(currentPlayer), 600);
+            } else if (checkDraw()) {
+                isGameActive = false;
+                setTimeout(() => showWinModal(0), 600);
+            } else {
+                switchTurn();
+            }
+        }
+
+        function animateDrop(c, r, player) {
+            // Sütun wrapper'ını bul
+            const colWrapper = boardElement.children[c];
+            // Hücreyi bul
+            const cell = colWrapper.children[r + 1]; // +1 çünkü ilk eleman hover-indicator
+            const container = cell.querySelector('div');
+
+            const piece = document.createElement('div');
+            piece.className = `piece ${player === RED ? 'red' : 'yellow'}`;
+            container.appendChild(piece);
+        }
+
+        function switchTurn() {
+            currentPlayer = currentPlayer === RED ? YELLOW : RED;
+            updateUI();
+
+            if (gameMode === 'cpu' && currentPlayer === YELLOW && isGameActive) {
+                isCpuThinking = true;
+                // Yapay zeka düşünme süresi (doğallık için)
+                setTimeout(cpuMove, 700);
+            }
+        }
+
+        function updateUI() {
+            if (currentPlayer === RED) {
+                turnText.textContent = "Sıra Kırmızıda";
+                turnDot.className = "w-4 h-4 rounded-full bg-red-500";
+                turnIndicator.className = "flex items-center gap-2 px-4 py-2 rounded-full font-bold text-lg bg-red-100 text-red-600 transition-colors duration-300 shadow-sm border border-red-200";
+            } else {
+                turnText.textContent = gameMode === 'cpu' ? "Bilgisayar Düşünüyor..." : "Sıra Sarıda";
+                turnDot.className = "w-4 h-4 rounded-full bg-yellow-500";
+                turnIndicator.className = "flex items-center gap-2 px-4 py-2 rounded-full font-bold text-lg bg-yellow-100 text-yellow-600 transition-colors duration-300 shadow-sm border border-yellow-200";
+            }
+        }
+
+        function updateScores() {
+            scoreRedEl.textContent = scores[RED];
+            scoreYellowEl.textContent = scores[YELLOW];
+        }
+
+        // --- Yapay Zeka (Basit Sezgisel) ---
+        function cpuMove() {
+            if (!isGameActive) return;
+
+            let bestCol = -1;
+
+            // 1. Kazanabiliyor muyum?
+            bestCol = findBestMove(YELLOW);
+            
+            // 2. Rakip kazanmak üzere mi? (Blokla)
+            if (bestCol === -1) {
+                bestCol = findBestMove(RED);
+            }
+
+            // 3. Stratejik hamle (Ortalar daha değerli)
+            if (bestCol === -1) {
+                // Ortadan dışa doğru boş yer ara
+                const priorityCols = [3, 2, 4, 1, 5, 0, 6];
+                for (let col of priorityCols) {
+                    if (isValidMove(col)) {
+                        bestCol = col;
+                        break;
+                    }
+                }
+            }
+            
+            // Hata koruması (hala bulamadıysa rastgele)
+            if (bestCol === -1) {
+                const validCols = [];
+                for(let i=0; i<COLS; i++) if(isValidMove(i)) validCols.push(i);
+                if(validCols.length > 0) {
+                    bestCol = validCols[Math.floor(Math.random() * validCols.length)];
+                }
+            }
+
+            if (bestCol !== -1) {
+                dropPiece(bestCol);
+            }
+            isCpuThinking = false;
+        }
+
+        function isValidMove(col) {
+            return board[col][0] === EMPTY;
+        }
+
+        // Simülasyon yaparak en iyi hamleyi bulur (Kazanma kontrolü için)
+        function findBestMove(player) {
+            for (let c = 0; c < COLS; c++) {
+                if (!isValidMove(c)) continue;
+
+                // Hamleyi simüle et
+                let r = -1;
+                for (let i = ROWS - 1; i >= 0; i--) {
+                    if (board[c][i] === EMPTY) {
+                        r = i;
+                        break;
+                    }
+                }
+
+                board[c][r] = player; // Geçici koy
+                if (checkWin(c, r, player)) {
+                    board[c][r] = EMPTY; // Geri al
+                    return c;
+                }
+                board[c][r] = EMPTY; // Geri al
+            }
+            return -1;
+        }
+
+
+        // --- Kazanma Kontrolü ---
+        function checkWin(c, r, p) {
+            // Yatay, Dikey, Çapraz kontroller
+            return checkDirection(c, r, p, 1, 0) || // Yatay
+                   checkDirection(c, r, p, 0, 1) || // Dikey
+                   checkDirection(c, r, p, 1, 1) || // Çapraz /
+                   checkDirection(c, r, p, 1, -1);  // Çapraz \
+        }
+
+        function checkDirection(c, r, p, dx, dy) {
+            let count = 1;
+            // Bir yöne git
+            let i = 1;
+            while (true) {
+                const nc = c + dx * i;
+                const nr = r + dy * i;
+                if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS || board[nc][nr] !== p) break;
+                count++;
+                i++;
+            }
+            // Diğer yöne git
+            i = 1;
+            while (true) {
+                const nc = c - dx * i;
+                const nr = r - dy * i;
+                if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS || board[nc][nr] !== p) break;
+                count++;
+                i++;
+            }
+            return count >= 4;
+        }
+
+        function checkDraw() {
+            for (let c = 0; c < COLS; c++) {
+                if (board[c][0] === EMPTY) return false;
+            }
+            return true;
+        }
+
+        function showWinModal(winner) {
+            gameOverModal.classList.remove('hidden');
+            if (winner === 0) {
+                winnerTitle.textContent = "Berabere!";
+                winnerTitle.className = "text-3xl font-bold mb-2 text-gray-600";
+            } else if (winner === RED) {
+                winnerTitle.textContent = "Kırmızı Kazandı!";
+                winnerTitle.className = "text-3xl font-bold mb-2 text-red-600";
+            } else {
+                winnerTitle.textContent = gameMode === 'cpu' ? "Bilgisayar Kazandı!" : "Sarı Kazandı!";
+                winnerTitle.className = "text-3xl font-bold mb-2 text-yellow-600";
+            }
+        }
+
+        // Başlangıçta boş tahta oluştur
+        initBoard();
+
+    </script>
+</body>
+</html>
+
